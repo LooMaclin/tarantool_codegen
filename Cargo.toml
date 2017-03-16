@@ -1,0 +1,13 @@
+[package]
+name = "tarantool_orm"
+version = "0.1.0"
+authors = ["loo.maclin <loo.maclin@protonmail.com>"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "0.11.9"
+quote = "0.3.15"
+rmpv = "0.3.2"
+tarantool = { git = "https://github.com/LooMaclin/tarantool_rs.git" }
