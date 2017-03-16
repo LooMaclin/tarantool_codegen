@@ -10,6 +10,7 @@ extern crate tarantool;
 use proc_macro::TokenStream;
 use rmpv::Value;
 use tarantool::Insertable;
+use syn::Ident;
 
 #[proc_macro_derive(Insertable)]
 pub fn derive(input: TokenStream) -> TokenStream {
@@ -29,16 +30,19 @@ fn new_for_struct(ast: syn::MacroInput) -> quote::Tokens {
 
     match ast.body {
         syn::Body::Struct(syn::VariantData::Struct(ref fields)) => {
-            let vector_body = fields.iter().map(|f| {
-                let f_name = &f.ident;
-                quote!(#(Value::from(self.f_name),)*)
-            });
-            println!("vector body: {:?}", vector_body);
+            let mut resulting_quote = quote!();
+            let field_idents: Vec<Ident> = fields.iter().map(|f| f.ident.clone().unwrap()).collect();
 
+//            let field_ident = &fields[0].ident;
+//            let test_quote = quote!(Value::from(self.#field_ident));
             quote! {
-                impl Insertable for #name #ty_generics #where_clause {
+                impl Insertable for #name {
                     fn get_msgpack_representation(&self) -> Vec<Value> {
-                        vec![#(vector_body),*]
+                        let mut result : Vec<Value> = Vec::new();
+                        #(
+                            result.push(Value::from(self.#field_idents.clone()));
+                        )*
+                        result
                     }
                 }
             }
