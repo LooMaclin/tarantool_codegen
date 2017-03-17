@@ -5,9 +5,9 @@ extern crate tarantool;
 
 use tarantool::{Value, Tarantool, IteratorType, Select, Insert, Replace, Delete, UpdateCommon,
                 CommonOperation, Call, Eval, UpdateString, UpdateInteger, IntegerOperation, Upsert,
-                UpsertOperation, Insertable};
+                UpsertOperation, Space, Utf8String, ToMsgPack};
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, Space)]
 pub struct User {
     pub login: String,
     pub password: String,
@@ -29,7 +29,7 @@ fn main() {
         limit: 10000,
         offset: 0,
         iterator: IteratorType::All,
-        keys: &vec![]
+        keys: vec![]
     };
 
     let tuples = tarantool_instance.request(&select).unwrap_or_else(&error_handler);
@@ -43,7 +43,7 @@ fn main() {
         let delete = Delete {
             space: 512,
             index: 0,
-            keys: &vec![tuple[0].clone()]
+            keys: vec![tuple[0].clone()]
         };
 
         println!("Delete result: {:?}", tarantool_instance.request(&delete).unwrap_or_else(&error_handler));
@@ -75,7 +75,7 @@ fn main() {
         repr.insert(0, Value::from(index));
         let insert = Insert {
             space: 512,
-            keys: &repr,
+            keys: repr,
         };
         println!("Insert result: {:?}", tarantool_instance.request(&insert).unwrap_or_else(&error_handler));
     }
