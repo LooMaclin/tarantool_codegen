@@ -8,7 +8,7 @@ extern crate rmpv;
 extern crate quote;
 extern crate tarantool;
 
-use tarantool::{Value, Tarantool, IteratorType, Select, Insert, Replace, Delete, UpdateCommon,
+use tarantool::{Value, SyncClient, IteratorType, Select, Insert, Replace, Delete, UpdateCommon,
                 CommonOperation, Call, Eval, UpdateString, UpdateInteger, IntegerOperation, Upsert,
                 UpsertOperation, Space, ToMsgPack};
 
@@ -67,8 +67,14 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
     match ast.body {
         syn::Body::Struct(syn::VariantData::Struct(ref fields)) => {
             let name = &ast.ident;
-            let field_idents: Vec<Ident> = fields.iter().map(|f| f.ident.clone().unwrap()).collect();
-            let mut tarantool_instance = Tarantool::auth("127.0.0.1:3301", "test", "test").unwrap_or_else(|err| {
+            let name_string = name.as_ref();
+            let field_idents_msgpack: Vec<Ident> = fields.iter().map(|f| f.ident.clone().unwrap()).collect();
+            let field_idents_select = field_idents_msgpack.clone();
+            let mut field_numbers = Vec::new();
+            for (number, field) in field_idents_select.iter().enumerate() {
+                field_numbers.push(number);
+            }
+            let mut tarantool_instance = SyncClient::auth("127.0.0.1:3301", "test", "test").unwrap_or_else(|err| {
                 panic!("err: {}", err);
             });
 
@@ -105,7 +111,7 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
                     fn get_msgpack_representation(&self) -> Vec<Value> {
                         let mut result : Vec<Value> = Vec::new();
                         #(
-                            result.push(Value::from(self.#field_idents.clone()));
+                            result.push(Value::from(self.#field_idents_msgpack.clone()));
                         )*
                         result
                     }
@@ -114,20 +120,31 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
 
                 impl #name {
 
-                    fn insert(data: Vec<#name>, connection: &mut Tarantool) -> Result<Value, Utf8String> {
-                        let mut new_keys : Vec<Value> = Vec::new();
-                        for key in data {
-                            let mut msg_pack_repr = key.get_msgpack_representation();
-                            msg_pack_repr.insert(0, Value::from(12));
-                            println!("MSG PACK REPR: {:?}", msg_pack_repr);
-                            new_keys.push(Value::Array(msg_pack_repr));
-
-                        }
-                        println!("new keys: {:?}", new_keys);
-                        connection.request(&Insert {
-                          space: #space_id,
-                          keys: new_keys,
+                    fn insert(data: Vec<#name>, connection: &mut SyncClient) -> Vec<Result<Value, Utf8String>> {
+                        data.into_iter().map(|element| {
+                        let max_index = connection.request(&Eval {
+                                expression: format!("return box.space.{}.index.primary:max()", #name_string).into(),
+                                keys: vec![]
+                            }).unwrap()[0][0].as_u64().unwrap();
+                            let mut msg_pack_repr = element.get_msgpack_representation();
+                            msg_pack_repr.insert(0, Value::from(max_index+1));
+                            connection.request(&Insert {
+                                space: #space_id,
+                                keys: msg_pack_repr,
+                            })
                         })
+                        .collect::<Vec<Result<Value, Utf8String>>>()
+                    }
+
+                    fn select(select_params: &Select, connection: &mut SyncClient) -> Vec<#name> {
+                            connection.request(select_params)
+                                .unwrap()
+                                .as_array().unwrap().into_iter().map(|element| {
+                                   #name { #(
+                                      #field_idents_select : element[#field_numbers],
+                                   )* }
+                                })
+                                .collect::<Vec<User>>()
                     }
                 }
             }
