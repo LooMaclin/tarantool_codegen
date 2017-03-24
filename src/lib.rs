@@ -15,6 +15,7 @@ use tarantool::{Value, SyncClient, IteratorType, Select, Insert, Replace, Delete
 use proc_macro::TokenStream;
 use syn::Ident;
 use std::fmt::Debug;
+use syn::Ty;
 
 #[proc_macro_derive(Space)]
 pub fn derive_space(input: TokenStream) -> TokenStream {
@@ -71,8 +72,35 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
             let field_idents_msgpack: Vec<Ident> = fields.iter().map(|f| f.ident.clone().unwrap()).collect();
             let field_idents_select = field_idents_msgpack.clone();
             let mut field_numbers = Vec::new();
+            let mut field_initialize = Vec::new();
+            for (number, field) in fields.iter().enumerate() {
+                println!("FIELD TYPE ({}): {:?}", number, field.ty);
+                if let Ty::Path(ref q_self, ref path) = field.ty {
+                    println!("Path segment: {:?} ", path.segments[0].ident);
+                    match path.segments[0].ident.as_ref() {
+                        "String" => {
+                            println!("string type");
+                            field_initialize.push(quote! {
+                                .as_str().unwrap().to_string(),
+                            });
+                        },
+                        "u64" => {
+                            println!("u64 type");
+                            field_initialize.push(quote! {
+                                .as_u64().unwrap(),
+                            });
+                        },
+                        _ => {
+                            panic!("fuck off");
+                        }
+                    }
+                } else {
+                    panic!("Only path-types was supported!");
+                }
+            }
             for (number, field) in field_idents_select.iter().enumerate() {
-                field_numbers.push(number);
+                field_numbers.push(number+1);
+
             }
             let mut tarantool_instance = SyncClient::auth("127.0.0.1:3301", "test", "test").unwrap_or_else(|err| {
                 panic!("err: {}", err);
@@ -136,12 +164,20 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
                         .collect::<Vec<Result<Value, Utf8String>>>()
                     }
 
-                    fn select(select_params: &Select, connection: &mut SyncClient) -> Vec<#name> {
-                            connection.request(select_params)
+                    fn select(select_params: Select, connection: &mut SyncClient) -> Vec<#name> {
+                        let new_select_request = Select {
+                            space: #space_id,
+                            ..select_params
+                        };
+                        println!("PREVIEW SELECT: {:?}", connection.request(&new_select_request));
+                            connection.request(&new_select_request)
                                 .unwrap()
-                                .as_array().unwrap().into_iter().map(|element| {
+                                .as_array()
+                                .unwrap()
+                                .into_iter()
+                                .map(|element| {
                                    #name { #(
-                                      #field_idents_select : element[#field_numbers],
+                                      #field_idents_select : element[#field_numbers]#field_initialize
                                    )* }
                                 })
                                 .collect::<Vec<User>>()

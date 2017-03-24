@@ -39,5 +39,16 @@ fn main() {
         ],
         &mut tarantool_instance) {
         println!("Insert result: {:?}", result.unwrap_or_else(&error_handler));
+
+        for user in User::select(Select {
+            space: 512,
+            index: 0,
+            limit: 10,
+            offset: 0,
+            keys: vec![],
+            iterator: IteratorType::All,
+        }, &mut tarantool_instance) {
+            println!("Selected user: {:?}", user);
+        }
     }
 }
