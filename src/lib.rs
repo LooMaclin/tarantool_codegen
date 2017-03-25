@@ -28,37 +28,50 @@ pub fn derive_space(input: TokenStream) -> TokenStream {
     result.to_string().parse().expect("couldn't parse string to tokens")
 }
 
-#[proc_macro_derive(ToMsgPack)]
-pub fn derive_to_msg_pack(input: TokenStream) -> TokenStream {
-    let input: String = input.to_string();
-
-    let ast = syn::parse_macro_input(&input).expect("Couldn't parse item");
-
-    let result = new_to_msg_pack(ast);
-
+#[proc_macro_derive(Rest)]
+pub fn derive_rest(input: TokenStream) -> TokenStream {
+    let input : String = input.to_string();
+    let ast = syn::parse_macro_input(&input).expect("couldn't parse item");
+    let result = new_rest(ast);
     result.to_string().parse().expect("couldn't parse string to tokens")
 }
 
-fn new_to_msg_pack(ast: syn::MacroInput) -> quote::Tokens {
-    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
-
+fn new_rest(ast: syn::MacroInput) -> quote::Tokens {
+    let name = &ast.ident;
     match ast.body {
         syn::Body::Struct(syn::VariantData::Struct(ref fields)) => {
-            let name = &ast.ident;
-            let field_idents: Vec<Ident> = fields.iter().map(|f| f.ident.clone().unwrap()).collect();
             quote! {
-                impl ToMsgPack for #name {
-                    fn get_msgpack_representation(&self) -> Vec<Value> {
-                        let mut result : Vec<Value> = Vec::new();
-                        #(
-                            result.push(Value::from(self.#field_idents.clone()));
-                        )*
-                        result
+                impl Service for #name {
+                    type Request = Request;
+                    type Response = Response;
+                    type Error = hyper::Error;
+                    type Future = FutureResult<Response, hyper::Error>;
+
+                    fn call(&self, req: Request) -> Self::Future {
+                        futures::future::ok(match (req.method(), req.path()) {
+                            (&Get, "/") | (&Get, "/echo") => {
+                                Response::new()
+                                    .with_header(ContentLength("Hello world".len() as u64))
+                                    .with_body("Hello world!")
+                            },
+                            (&Post, "/echo") => {
+                                let mut res = Response::new();
+                                if let Some(len) = req.headers().get::<ContentLength>() {
+                                    res.headers_mut().set(len.clone());
+                                }
+                                res.with_body(req.body())
+                            },
+                            _ => {
+                                Response::new()
+                                    .with_status(StatusCode::NotFound)
+                            }
+                        })
                     }
+
                 }
             }
         },
-        _ => panic!("#[derive(new)] can only be used with structs"),
+        _ => panic!("#[derive(Rest)] can only be used with structs")
     }
 }
 
@@ -70,7 +83,10 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
             let name = &ast.ident;
             let name_string = name.as_ref();
             let field_idents_msgpack: Vec<Ident> = fields.iter().map(|f| f.ident.clone().unwrap()).collect();
+            let primary_index_ident = field_idents_msgpack[0].clone();
             let field_idents_select = field_idents_msgpack.clone();
+            let field_idents_insert = field_idents_msgpack.clone();
+            let field_idents_delete = field_idents_msgpack.clone();
             let mut field_numbers = Vec::new();
             let mut field_initialize = Vec::new();
             for (number, field) in fields.iter().enumerate() {
@@ -98,10 +114,14 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
                     panic!("Only path-types was supported!");
                 }
             }
+            let field_insert_initialize = field_initialize.clone();
+            let field_delete_initialize = field_initialize.clone();
             for (number, field) in field_idents_select.iter().enumerate() {
-                field_numbers.push(number+1);
+                field_numbers.push(number);
 
             }
+            let field_insert_numbers = field_numbers.clone();
+            let field_delete_numbers = field_numbers.clone();
             let mut tarantool_instance = SyncClient::auth("127.0.0.1:3301", "test", "test").unwrap_or_else(|err| {
                 panic!("err: {}", err);
             });
@@ -148,20 +168,44 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
 
                 impl #name {
 
-                    fn insert(data: Vec<#name>, connection: &mut SyncClient) -> Vec<Result<Value, Utf8String>> {
-                        data.into_iter().map(|element| {
+                    fn delete(self, connection: &mut SyncClient) -> Result<#name, String> {
+                        match connection.request(&Delete {
+                            space: #space_id,
+                            index: 0,
+                            keys: vec![Value::from(self.#primary_index_ident)],
+                        }) {
+                            Ok(delete_result) => {
+                                Ok(#name { #(
+                                      #field_idents_delete : delete_result[#field_delete_numbers]#field_delete_initialize
+                                   )* })
+                            },
+                            Err(err) => {
+                                Err(err.into_str().unwrap())
+                            }
+                        }
+                    }
+
+                    fn insert(data: Vec<#name>, connection: &mut SyncClient) -> Vec<Result<#name, String>> {
+                        data.into_iter().map(|mut element| {
                         let max_index = connection.request(&Eval {
                                 expression: format!("return box.space.{}.index.primary:max()", #name_string).into(),
                                 keys: vec![]
-                            }).unwrap()[0][0].as_u64().unwrap();
+                            }).unwrap()[0][0].as_u64().unwrap_or(0);
+                            element.id = max_index+1;
                             let mut msg_pack_repr = element.get_msgpack_representation();
-                            msg_pack_repr.insert(0, Value::from(max_index+1));
-                            connection.request(&Insert {
+                            match connection.request(&Insert {
                                 space: #space_id,
                                 keys: msg_pack_repr,
-                            })
+                            }) {
+                                Ok(insert_result) => {
+                                    Ok(element)
+                                },
+                                Err(error_string) => {
+                                    Err(error_string.into_str().unwrap())
+                                }
+                            }
                         })
-                        .collect::<Vec<Result<Value, Utf8String>>>()
+                        .collect::<Vec<Result<#name, String>>>()
                     }
 
                     fn select(select_params: Select, connection: &mut SyncClient) -> Vec<#name> {
@@ -169,11 +213,10 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
                             space: #space_id,
                             ..select_params
                         };
-                        println!("PREVIEW SELECT: {:?}", connection.request(&new_select_request));
                             connection.request(&new_select_request)
                                 .unwrap()
                                 .as_array()
-                                .unwrap()
+                                .unwrap_or(&Vec::new())
                                 .into_iter()
                                 .map(|element| {
                                    #name { #(
