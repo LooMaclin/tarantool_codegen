@@ -115,6 +115,7 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
                     }).unwrap_or_else(&error_handler));
                 }
             }
+
             quote! {
                  impl ToMsgPack for #name {
                     fn get_msgpack_representation(&self) -> Vec<Value> {
@@ -147,12 +148,16 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
                         }
                     }
 
-                    fn insert_group(data: Vec<#name>, connection: &mut SyncClient) -> Vec<Result<#name, String>> {
-                        data.into_iter().map(|mut element| {
-                        let max_index = connection.request(&Eval {
+                    fn get_max_id(connection: &mut SyncClient) -> u64 {
+                           connection.request(&Eval {
                                 expression: format!("return box.space.{}.index.primary:max()", #name_string).into(),
                                 keys: vec![]
-                            }).unwrap()[0][0].as_u64().unwrap_or(0);
+                           }).unwrap()[0][0].as_u64().unwrap_or(0)
+                    }
+
+                    fn insert_group(data: Vec<#name>, connection: &mut SyncClient) -> Vec<Result<#name, String>> {
+                        data.into_iter().map(|mut element| {
+                            let max_index = #name::get_max_id(connection);
                             element.id = max_index+1;
                             let msg_pack_repr = element.get_msgpack_representation();
                             match connection.request(&Insert {
