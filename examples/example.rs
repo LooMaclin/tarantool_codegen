@@ -36,20 +36,19 @@ fn main() {
     });
 
 //    let error_handler = |err| panic!("Tarantool error: {}", err);
+
     println!("===============");
-    println!("Users in space: ");
+    println!("Example 1. Insert single object in space: ");
     println!("===============");
-    for (index, user) in User::select(Select {
-                                                space: 512,
-                                                index: 0,
-                                                limit: 10,
-                                                offset: 0,
-                                                keys: vec![],
-                                                iterator: IteratorType::All,
-                                            }, &mut tarantool_instance).into_iter().enumerate() {
-        println!("№{}: {:?}", index, user);
-        println!("Deleting this user... : {:?}", user.delete(&mut tarantool_instance));
-    }
+
+    println!("Insert user into User space result: {:?}", User {
+        id: 0,
+        login: String::from("test_insert_single_object"),
+        password: String::from("test_insert_single_object"),
+        likes: 1,
+        posts: 1,
+    }.insert(&mut tarantool_instance));
+
     println!("===============");
     println!("Insert users: ");
     println!("===============");
@@ -73,4 +72,20 @@ fn main() {
         println!("№{}: {:?}", index, insert_user_result);
     }
     println!("===============");
+
+
+    println!("===============");
+    println!("Clearing space after examples...");
+    println!("===============");
+    for (index, user) in User::select(Select {
+        space: 512,
+        index: 0,
+        limit: 10,
+        offset: 0,
+        keys: vec![],
+        iterator: IteratorType::All,
+    }, &mut tarantool_instance).into_iter().enumerate() {
+        println!("Deleting user №{}... : {:?}", index, user.delete(&mut tarantool_instance));
+    }
+    println!("Space is clear.");
 }

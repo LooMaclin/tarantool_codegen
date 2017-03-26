@@ -148,17 +148,39 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
                         }
                     }
 
-                    fn get_max_id(connection: &mut SyncClient) -> u64 {
-                           connection.request(&Eval {
+                    fn get_next_id(connection: &mut SyncClient) -> u64 {
+                           match connection.request(&Eval {
                                 expression: format!("return box.space.{}.index.primary:max()", #name_string).into(),
                                 keys: vec![]
-                           }).unwrap()[0][0].as_u64().unwrap_or(0)
+                           }).unwrap()[0][0].as_u64() {
+                                Some(max_id) => {
+                                    max_id + 1
+                                },
+                                None => {
+                                    0
+                                }
+                           }
+                    }
+
+                    fn insert(&mut self, connection: &mut SyncClient) -> Result<&mut #name, String> {
+                            self.id = #name::get_next_id(connection);
+                            let msg_pack_repr = self.get_msgpack_representation();
+                            match connection.request(&Insert {
+                                space: #space_id,
+                                keys: msg_pack_repr,
+                            }) {
+                                Ok(_) => {
+                                    Ok(self)
+                                },
+                                Err(error_string) => {
+                                    Err(error_string.into_str().unwrap())
+                                }
+                            }
                     }
 
                     fn insert_group(data: Vec<#name>, connection: &mut SyncClient) -> Vec<Result<#name, String>> {
                         data.into_iter().map(|mut element| {
-                            let max_index = #name::get_max_id(connection);
-                            element.id = max_index+1;
+                            element.id = #name::get_next_id(connection);
                             let msg_pack_repr = element.get_msgpack_representation();
                             match connection.request(&Insert {
                                 space: #space_id,
