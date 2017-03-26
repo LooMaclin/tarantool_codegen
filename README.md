@@ -1,4 +1,19 @@
-# Tarantool ORM
+# Tarantool Codegen
+
+# Index
+
+- [Add dependency](#add-dependency)
+- [Usage](#usage)
+- [Space annotation overview](#space-annotation)
+- [Creating struct for examples](#creating-struct-for-examples)
+- [Atomic actions](#atomic-actions)
+    - [Insert](#insert)
+    - [Select](#select)
+    - [Delete](#delete)
+- [Group actions](#group-actions)
+    - [Insert group](#insert-group)
+    - [Select group](#select-group)
+    - [Delete group](#delete-group)
 
 # Add dependency
 
@@ -69,7 +84,7 @@ impl Default for User {
 
 ```
 
-## Insert single object into space
+## Insert
 
 ```rust
 
@@ -87,7 +102,7 @@ impl Default for User {
 
 ```
 
-## Insert group of objects into space
+## Insert group
 
 ```rust
 
@@ -117,7 +132,7 @@ impl Default for User {
 
 ```
 
-## Select objects from space
+## Select
 
 ```rust
 
@@ -137,10 +152,23 @@ println!("===============");
 
 ```
 
-## Delete object in space
+## Delete
 
 ```rust
 
-
+    println!("===============");
+    println!("Clearing space after examples...");
+    println!("===============");
+    for (index, user) in User::select(Select {
+        space: 512,
+        index: 0,
+        limit: 10,
+        offset: 0,
+        keys: vec![],
+        iterator: IteratorType::All,
+    }, &mut tarantool_instance).into_iter().enumerate() {
+        println!("Deleting user №{}... : {:?}", index, user.delete(&mut tarantool_instance));
+    }
+    println!("Space is clear.");
 
 ```
