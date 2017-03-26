@@ -53,7 +53,7 @@ fn main() {
     println!("===============");
     println!("Insert users: ");
     println!("===============");
-    for (index, insert_user_result) in User::insert(
+    for (index, insert_user_result) in User::insert_group(
                                 vec![
                                     User {
                                         id: 0,

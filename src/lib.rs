@@ -147,7 +147,7 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
                         }
                     }
 
-                    fn insert(data: Vec<#name>, connection: &mut SyncClient) -> Vec<Result<#name, String>> {
+                    fn insert_group(data: Vec<#name>, connection: &mut SyncClient) -> Vec<Result<#name, String>> {
                         data.into_iter().map(|mut element| {
                         let max_index = connection.request(&Eval {
                                 expression: format!("return box.space.{}.index.primary:max()", #name_string).into(),
@@ -190,6 +190,6 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
                 }
             }
         },
-        _ => panic!("#[derive(new)] can only be used with structs"),
+        _ => panic!("#[derive(Space)] can only be used with structs"),
     }
 }
