@@ -24,6 +24,24 @@ use tarantool::{Value, SyncClient, IteratorType, Select, Insert, Delete, Eval, T
 
 ```
 
+## Space annotation
+
+`Space` annotation generates for struct two methods types:
+
+- Atomic actions:
+
+    - `insert`;
+    - `delete`;
+    - `select`;
+    
+- Group actions that hide atomic:
+
+    - `insert_group`;
+    - `select_group`;
+    - `delete_group`;
+
+For structures annotated in this way, a requirement is made, the first field must be necessarily `id: U64`.
+
 ## Creating struct for examples
 
 ```rust
