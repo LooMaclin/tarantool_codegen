@@ -1,6 +1,6 @@
-#Tarantool ORM
+# Tarantool ORM
 
-#Add dependency
+# Add dependency
 
 ```toml
 
@@ -9,7 +9,7 @@ tarantool_codegen = { git = "https://github.com/LooMaclin/tarantool_codegen.git"
 
 ```
 
-#Usage
+# Usage
 
 ```rust
 
@@ -24,7 +24,7 @@ use tarantool::{Value, SyncClient, IteratorType, Select, Insert, Delete, Eval, T
 
 ```
 
-##Creating struct for examples
+## Creating struct for examples
 
 ```rust
 
@@ -51,7 +51,7 @@ impl Default for User {
 
 ```
 
-##Insert single object into space
+## Insert single object into space
 
 ```rust
 
@@ -69,7 +69,7 @@ impl Default for User {
 
 ```
 
-##Insert group of objects into space
+## Insert group of objects into space
 
 ```rust
 
@@ -99,7 +99,7 @@ impl Default for User {
 
 ```
 
-##Select objects from space
+## Select objects from space
 
 ```rust
 
@@ -119,7 +119,7 @@ println!("===============");
 
 ```
 
-##Delete object in space
+## Delete object in space
 
 ```rust
 
