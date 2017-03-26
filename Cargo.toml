@@ -1,5 +1,5 @@
 [package]
-name = "tarantool_orm"
+name = "tarantool_codegen"
 version = "0.1.0"
 authors = ["loo.maclin <loo.maclin@protonmail.com>"]
 

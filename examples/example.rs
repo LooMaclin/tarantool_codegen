@@ -1,20 +1,13 @@
-#[macro_use]
-extern crate tarantool_orm;
+#![deny(warnings, bad_style, unused, future_incompatible)]
+
 extern crate rmpv;
 extern crate tarantool;
-extern crate futures;
-extern crate hyper;
 
-use tarantool::{Value, SyncClient, IteratorType, Select, Insert, Replace, Delete, UpdateCommon,
-                CommonOperation, Call, Eval, UpdateString, UpdateInteger, IntegerOperation, Upsert,
-                UpsertOperation, Space, Utf8String, ToMsgPack};
-use std::fmt::Debug;
+#[macro_use]
+extern crate tarantool_codegen;
 
-use futures::future::FutureResult;
 
-use hyper::{Get, Post, StatusCode};
-use hyper::header::ContentLength;
-use hyper::server::{Http, Service, Request, Response};
+use tarantool::{Value, SyncClient, IteratorType, Select, Insert, Delete, Eval, ToMsgPack};
 
 #[derive(Debug, Space, Rest)]
 pub struct User {
@@ -55,7 +48,7 @@ fn main() {
                                                 iterator: IteratorType::All,
                                             }, &mut tarantool_instance).into_iter().enumerate() {
         println!("№{}: {:?}", index, user);
-        println!("Deleting this user... : {:?}",user.delete(&mut tarantool_instance));
+        println!("Deleting this user... : {:?}", user.delete(&mut tarantool_instance));
     }
     println!("===============");
     println!("Insert users: ");
@@ -80,19 +73,4 @@ fn main() {
         println!("№{}: {:?}", index, insert_user_result);
     }
     println!("===============");
-//
-//    for (index, user) in User::select(Select {
-//        space: 512,
-//        index: 0,
-//        limit: 10,
-//        offset: 0,
-//        keys: vec![],
-//        iterator: IteratorType::All,
-//    }, &mut tarantool_instance).iter().enumerate() {
-//        println!("Selected user {}: {:?}", index, user);
-//    }
-//    let addr = "127.0.0.1:1337".parse().unwrap();
-//    let server = Http::new().bind(&addr, || Ok(User::default())).unwrap();
-//    println!("Listening on http://{} with 1 thread.", server.local_addr().unwrap());
-//    server.run().unwrap();
 }

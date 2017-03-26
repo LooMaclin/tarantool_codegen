@@ -1,5 +1,6 @@
 #![crate_type = "proc-macro"]
-#![recursion_limit="128"]
+#![recursion_limit="256"]
+// #![deny(warnings, bad_style, unused, future_incompatible)]
 
 extern crate proc_macro;
 extern crate syn;
@@ -8,14 +9,10 @@ extern crate rmpv;
 extern crate quote;
 extern crate tarantool;
 
-use tarantool::{Value, SyncClient, IteratorType, Select, Insert, Replace, Delete, UpdateCommon,
-                CommonOperation, Call, Eval, UpdateString, UpdateInteger, IntegerOperation, Upsert,
-                UpsertOperation, Space, ToMsgPack};
+use tarantool::{SyncClient, Eval};
 
 use proc_macro::TokenStream;
-use syn::Ident;
-use std::fmt::Debug;
-use syn::Ty;
+use syn::{Ident, Ty};
 
 #[proc_macro_derive(Space)]
 pub fn derive_space(input: TokenStream) -> TokenStream {
@@ -37,38 +34,11 @@ pub fn derive_rest(input: TokenStream) -> TokenStream {
 }
 
 fn new_rest(ast: syn::MacroInput) -> quote::Tokens {
-    let name = &ast.ident;
+
     match ast.body {
-        syn::Body::Struct(syn::VariantData::Struct(ref fields)) => {
+        syn::Body::Struct(syn::VariantData::Struct(_)) => {
             quote! {
-                impl Service for #name {
-                    type Request = Request;
-                    type Response = Response;
-                    type Error = hyper::Error;
-                    type Future = FutureResult<Response, hyper::Error>;
 
-                    fn call(&self, req: Request) -> Self::Future {
-                        futures::future::ok(match (req.method(), req.path()) {
-                            (&Get, "/") | (&Get, "/echo") => {
-                                Response::new()
-                                    .with_header(ContentLength("Hello world".len() as u64))
-                                    .with_body("Hello world!")
-                            },
-                            (&Post, "/echo") => {
-                                let mut res = Response::new();
-                                if let Some(len) = req.headers().get::<ContentLength>() {
-                                    res.headers_mut().set(len.clone());
-                                }
-                                res.with_body(req.body())
-                            },
-                            _ => {
-                                Response::new()
-                                    .with_status(StatusCode::NotFound)
-                            }
-                        })
-                    }
-
-                }
             }
         },
         _ => panic!("#[derive(Rest)] can only be used with structs")
@@ -76,8 +46,6 @@ fn new_rest(ast: syn::MacroInput) -> quote::Tokens {
 }
 
 fn new_space(ast: syn::MacroInput) -> quote::Tokens {
-    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
-
     match ast.body {
         syn::Body::Struct(syn::VariantData::Struct(ref fields)) => {
             let name = &ast.ident;
@@ -85,42 +53,35 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
             let field_idents_msgpack: Vec<Ident> = fields.iter().map(|f| f.ident.clone().unwrap()).collect();
             let primary_index_ident = field_idents_msgpack[0].clone();
             let field_idents_select = field_idents_msgpack.clone();
-            let field_idents_insert = field_idents_msgpack.clone();
             let field_idents_delete = field_idents_msgpack.clone();
             let mut field_numbers = Vec::new();
             let mut field_initialize = Vec::new();
-            for (number, field) in fields.iter().enumerate() {
-                println!("FIELD TYPE ({}): {:?}", number, field.ty);
-                if let Ty::Path(ref q_self, ref path) = field.ty {
-                    println!("Path segment: {:?} ", path.segments[0].ident);
+            for (_, field) in fields.iter().enumerate() {
+                if let Ty::Path(_, ref path) = field.ty {
                     match path.segments[0].ident.as_ref() {
                         "String" => {
-                            println!("string type");
                             field_initialize.push(quote! {
                                 .as_str().unwrap().to_string(),
                             });
                         },
                         "u64" => {
-                            println!("u64 type");
                             field_initialize.push(quote! {
                                 .as_u64().unwrap(),
                             });
                         },
                         _ => {
-                            panic!("fuck off");
+                            panic!("Tarantool Codegen Error: this field type not supported.");
                         }
                     }
                 } else {
                     panic!("Only path-types was supported!");
                 }
             }
-            let field_insert_initialize = field_initialize.clone();
             let field_delete_initialize = field_initialize.clone();
-            for (number, field) in field_idents_select.iter().enumerate() {
+            for (number, _) in field_idents_select.iter().enumerate() {
                 field_numbers.push(number);
 
             }
-            let field_insert_numbers = field_numbers.clone();
             let field_delete_numbers = field_numbers.clone();
             let mut tarantool_instance = SyncClient::auth("127.0.0.1:3301", "test", "test").unwrap_or_else(|err| {
                 panic!("err: {}", err);
@@ -132,7 +93,7 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
                     println!("Space with name {} exist with id {}", ast.ident.as_ref(), space_id);
                     space_id
                 },
-                Err(err) => {
+                Err(_) => {
                     let eval = Eval {
                         expression: format!(r#"box.schema.space.create('{}')"#,ast.ident.as_ref()).into(),
                         keys: vec![],
@@ -176,11 +137,12 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
                         }) {
                             Ok(delete_result) => {
                                 Ok(#name { #(
-                                      #field_idents_delete : delete_result[#field_delete_numbers]#field_delete_initialize
+                                      #field_idents_delete : delete_result[0][#field_delete_numbers]#field_delete_initialize
                                    )* })
                             },
                             Err(err) => {
-                                Err(err.into_str().unwrap())
+                             println!("delete result: error");
+                                Err(err.into_str().unwrap_or(String::from("Tarantool Codegen Error: cannot parse delete error message")))
                             }
                         }
                     }
@@ -192,12 +154,12 @@ fn new_space(ast: syn::MacroInput) -> quote::Tokens {
                                 keys: vec![]
                             }).unwrap()[0][0].as_u64().unwrap_or(0);
                             element.id = max_index+1;
-                            let mut msg_pack_repr = element.get_msgpack_representation();
+                            let msg_pack_repr = element.get_msgpack_representation();
                             match connection.request(&Insert {
                                 space: #space_id,
                                 keys: msg_pack_repr,
                             }) {
-                                Ok(insert_result) => {
+                                Ok(_) => {
                                     Ok(element)
                                 },
                                 Err(error_string) => {
